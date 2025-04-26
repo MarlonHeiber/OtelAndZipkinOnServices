@@ -27,10 +27,14 @@ func main() {
 
 	handler := otelhttp.NewHandler(mux, "serverA")
 	http.ListenAndServe(":8081", handler)
-	// http.ListenAndServe(":8081", mux)
 
 }
 func validateCepAndSendToServiceB(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	ctx, span := otel.Tracer("serverA").Start(ctx, "validateCepAndSendToServiceB")
+
+	defer span.End()
+
 	if r.URL.Path != "/" {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -55,8 +59,10 @@ func validateCepAndSendToServiceB(w http.ResponseWriter, r *http.Request) {
 
 	urlServerB := fmt.Sprintf("http://serverB:8080/?cep=%s", cepParam)
 
-	// req, err := http.NewRequest(http.MethodPost, urlServerB, nil)
-	req, err := http.NewRequest(http.MethodGet, urlServerB, nil)
+	client := http.Client{
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlServerB, nil)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{
@@ -65,9 +71,6 @@ func validateCepAndSendToServiceB(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := http.Client{
-		Transport: otelhttp.NewTransport(http.DefaultTransport),
-	}
 	resp, err := client.Do(req)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
