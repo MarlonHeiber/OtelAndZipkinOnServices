@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  servera:
+    build:
+      context: ./serverA
+    ports:
+      - "8081:8081"
+    depends_on:
+      - serverb
+      - otel-collector
+    environment:
+      - OTEL_EXPORTER=otlp
+      - OTEL_SERVICE_NAME=serverA
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=serverA
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_COLLECTOR_ENDPOINT=otel-collector:4317
+      - OTEL_METRICS_EXPORTER=prometheus
+
+
+  serverb:
+    build:
+      context: ./serverB
+    ports:
+      - "8080:8080"
+    environment:
+      - OTEL_EXPORTER=otlp
+      - OTEL_SERVICE_NAME=serverB
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=serverB
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_COLLECTOR_ENDPOINT=otel-collector:4317
+      - OTEL_METRICS_EXPORTER=prometheus
+
+  # jaeger-all-in-one:
+  #   image: jaegertracing/all-in-one:1.38
+  #   restart: always
+  #   ports:
+  #     - "16686:16686"
+  #     - "14268"
+  #     - "14250"
+
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus:latest
+    restart: always
+    volumes:
+      - ./.docker/prometheus.yaml:/etc/prometheus/prometheus.yaml
+    ports:
+      - "9090:9090"
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    restart: always
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./.docker/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "8888:8888" # Prometheus metric exposed by collector
+      - "8889:8889" # Prometheus exporter metrics
+      - "4317:4317" # OTEP gRPC receiver
+      - "4318:4318" # HTTP receiver
+
+
+  zipkin:
+    image: openzipkin/zipkin
+    restart: always
+    ports:
+      - "9411:9411"
+    environment: 
+      - COLLECTOR_ZIPKIN_HTTP_PORT=9411

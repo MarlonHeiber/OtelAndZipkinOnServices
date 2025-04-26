@@ -5,3 +5,10 @@ Roda dois webservers o serverA recebe um CEP e valida se o CEP possui 8 digitos,
 
 Os sistemas utilizam OTEL + Zipkin, com tracing distribuído entre Serviço A - Serviço B.
 Também está sendo utilizado span para medir o tempo de resposta do serviço de busca de CEP e busca de temperatura# OtelAndZipkinOnServices
+
+
+## Como rodar?
+`docker-compose up --build`
+
+Agora basta acessar a url http://localhost:8081/?cep=89239899  e o sistema validará e enviará a requisição para o serverB com um post `http://serverB:8080/?cep=89239899`
+

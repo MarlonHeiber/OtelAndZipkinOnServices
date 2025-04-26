@@ -1,11 +1,21 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/sdk/resource"
+	"go.opentelemetry.io/otel/sdk/trace"
+	"google.golang.org/grpc"
 )
 
 type ViaCEP struct {
@@ -81,12 +91,18 @@ type WeatherResponse struct {
 }
 
 func main() {
+	shutdown := initTracer("serverA")
+	defer shutdown()
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", showTemperatureByCep)
-	http.ListenAndServe(":8080", mux)
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		showTemperatureByCep(r.Context(), w, r)
+	})
+	handler := otelhttp.NewHandler(mux, "serverA")
+	http.ListenAndServe(":8080", handler)
+	// http.ListenAndServe(":8080", mux)
 
 }
-func showTemperatureByCep(w http.ResponseWriter, r *http.Request) {
+func showTemperatureByCep(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -99,7 +115,7 @@ func showTemperatureByCep(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	viaCep, err := BuscaCEP(cepParam)
+	viaCep, err := BuscaCEP(ctx, cepParam)
 	if err != nil {
 		switch err.Error() {
 		case "invalid zipcode":
@@ -121,10 +137,14 @@ func showTemperatureByCep(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	temperare, err := getWeatherFromCityName(viaCep.Localidade)
+	temperare, err := getWeatherFromCityName(ctx, viaCep.Localidade)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Println("StatusInternalServerError")
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "internal error",
+		})
+		return
 	}
 
 	response := WeatherResponse{
@@ -140,7 +160,9 @@ func showTemperatureByCep(w http.ResponseWriter, r *http.Request) {
 	// w.Write([]byte(fmt.Sprint(viaCep)))
 }
 
-func BuscaCEP(cep string) (ViaCEP, error) {
+func BuscaCEP(ctx context.Context, cep string) (ViaCEP, error) {
+	ctx, span := otel.Tracer("serverB").Start(ctx, "BuscaCEP")
+	defer span.End()
 	req, err := http.Get("http://viacep.com.br/ws/" + cep + "/json/")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Erro ao fazer requisição: %v \n", err)
@@ -171,7 +193,9 @@ func BuscaCEP(cep string) (ViaCEP, error) {
 
 }
 
-func getWeatherFromCityName(cityName string) (WeatherApi, error) {
+func getWeatherFromCityName(ctx context.Context, cityName string) (WeatherApi, error) {
+	ctx, span := otel.Tracer("serverB").Start(ctx, "getWeatherFromCityName")
+	defer span.End()
 	weatherUrl := fmt.Sprintf("https://api.weatherapi.com/v1/current.json?q=%s&key=12b01999d1844295996195139252304", cityName)
 	req, err := http.Get(weatherUrl)
 	if err != nil {
@@ -193,4 +217,32 @@ func getWeatherFromCityName(cityName string) (WeatherApi, error) {
 	}
 	return data, nil
 
+}
+
+func initTracer(serviceName string) func() {
+	ctx := context.Background()
+
+	conn, err := grpc.DialContext(ctx, os.Getenv("OTEL_COLLECTOR_ENDPOINT"), grpc.WithInsecure())
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	exp, err := otlptracegrpc.New(ctx, otlptracegrpc.WithGRPCConn(conn))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	tp := trace.NewTracerProvider(
+		trace.WithBatcher(exp),
+		trace.WithResource(resource.NewWithAttributes(
+			"",
+			attribute.String("service.name", serviceName),
+		)),
+	)
+
+	otel.SetTracerProvider(tp)
+
+	return func() {
+		_ = tp.Shutdown(ctx)
+	}
 }
