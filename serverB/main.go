@@ -92,15 +92,14 @@ type WeatherResponse struct {
 }
 
 func main() {
-	shutdown := initTracer("serverA")
+	shutdown := initTracer("serverB")
 	defer shutdown()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		showTemperatureByCep(r.Context(), w, r)
 	})
-	handler := otelhttp.NewHandler(mux, "serverA")
+	handler := otelhttp.NewHandler(mux, "serverB")
 	http.ListenAndServe(":8080", handler)
-	// http.ListenAndServe(":8080", mux)
 
 }
 func showTemperatureByCep(ctx context.Context, w http.ResponseWriter, r *http.Request) {
