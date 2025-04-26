@@ -22,7 +22,7 @@ services:
       # - OTEL_EXPORTER_ZIPKIN_ENDPOINT=http://jaeger-all-in-one:9411/api/v2/spans
       # - OTEL_COLLECTOR_ENDPOINT=otel-collector:4317
       # - OTEL_METRICS_EXPORTER=prometheus
-      - OTEL_EXPORTER_OTLP_ENDPOINT=jaeger-all-in-one:14250
+      - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
       - HTTP_PORT=:8081
      
   serverb:
@@ -43,7 +43,7 @@ services:
       # - OTEL_EXPORTER_ZIPKIN_ENDPOINT=http://jaeger-all-in-one:9411/api/v2/spans
       # - OTEL_COLLECTOR_ENDPOINT=otel-collector:4317
       # - OTEL_METRICS_EXPORTER=prometheus
-      - OTEL_EXPORTER_OTLP_ENDPOINT=jaeger-all-in-one:14250
+      - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
       - HTTP_PORT=:8080
     depends_on:
       - jaeger-all-in-one
